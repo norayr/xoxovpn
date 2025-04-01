@@ -46,6 +46,7 @@ build_deps:
 buildThis:
 	cd $(BUILD) && $(VOC) -s $(mkfile_dir_path)/src/vpnTun.Mod
 	cd $(BUILD) && $(VOC) -s $(mkfile_dir_path)/src/vpnXor.Mod
+	cd $(BUILD) && $(VOC) -s $(mkfile_dir_path)/src/vpnNB.Mod
 	cd $(BUILD) && $(VOC) -m $(mkfile_dir_path)/src/vpnServer.Mod
 	cd $(BUILD) && $(VOC) -m $(mkfile_dir_path)/src/vpnClient.Mod
 

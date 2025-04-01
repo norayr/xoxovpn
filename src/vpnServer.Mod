@@ -1,5 +1,5 @@
 MODULE vpnServer;
-IMPORT vpnTun, vpnXor, netSockets, Out, SYSTEM, Platform;
+IMPORT vpnTun, vpnNB, vpnXor, netSockets, Out, SYSTEM, Platform;
 
 CONST
   BUFSIZE = 2048;
@@ -15,9 +15,12 @@ VAR
   addrLen: LONGINT;
   buf: ARRAY BUFSIZE OF CHAR;
   nRead: LONGINT;
-
+  b: BOOLEAN;
 BEGIN
   IF ~vpnTun.OpenTun(dev) THEN HALT(1) END;
+
+  b := vpnNB.SetNonBlockingFd(dev.fd);     (* TUN fd *)
+  b := vpnNB.SetNonBlockingFd(client);     (* accepted TCP client socket *)
 
   sock := netSockets.Socket(netSockets.AfInet, netSockets.SockStream, 0);
   IF sock = -1 THEN
@@ -45,19 +48,26 @@ BEGIN
   client := netSockets.Accept(sock, pSockAddr^, addrLen);
   Out.String("Client connected."); Out.Ln;
 
-  LOOP
-    res := Platform.Read(client, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
-    IF res = 0 THEN
+LOOP
+  (* socket → tun *)
+  res := Platform.Read(sock, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
+  IF res = 0 THEN
+    IF nRead > 0 THEN
       vpnXor.EncryptDecrypt(buf, nRead);
-      res := Platform.Write(dev.fd, SYSTEM.ADR(buf[0]), nRead)
-    END;
-
-    res := Platform.Read(dev.fd, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
-    IF res = 0 THEN
-      vpnXor.EncryptDecrypt(buf, nRead);
-      res := Platform.Write(client, SYSTEM.ADR(buf[0]), nRead)
-    END;
-
-    Platform.Delay(100);
+      res := Platform.Write(dev.fd, SYSTEM.ADR(buf[0]), nRead);
+    END
   END;
+
+  (* tun → socket *)
+  res := Platform.Read(dev.fd, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
+  IF res = 0 THEN
+    IF nRead > 0 THEN
+      vpnXor.EncryptDecrypt(buf, nRead);
+      res := Platform.Write(sock, SYSTEM.ADR(buf[0]), nRead);
+    END
+  END;
+
+  Platform.Delay(10);  (* shorter delay, for faster response *)
+END;
+
 END vpnServer.
