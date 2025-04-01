@@ -15,7 +15,7 @@ VAR
   addrLen: LONGINT;
   buf: ARRAY BUFSIZE OF CHAR;
   nRead: LONGINT;
-  b: BOOLEAN;
+  b, keep: BOOLEAN;
 BEGIN
   IF ~vpnTun.OpenTun(dev) THEN HALT(1) END;
 
@@ -48,26 +48,47 @@ BEGIN
   client := netSockets.Accept(sock, pSockAddr^, addrLen);
   Out.String("Client connected."); Out.Ln;
 
-LOOP
-  (* socket → tun *)
-  res := Platform.Read(sock, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
-  IF res = 0 THEN
-    IF nRead > 0 THEN
-      vpnXor.EncryptDecrypt(buf, nRead);
-      res := Platform.Write(dev.fd, SYSTEM.ADR(buf[0]), nRead);
-    END
+keep := TRUE;
+
+  LOOP
+    IF ~keep THEN EXIT END;
+
+    (* socket → tun *)
+    res := Platform.Read(sock, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
+    IF res = 0 THEN
+      IF nRead > 0 THEN
+        vpnXor.EncryptDecrypt(buf, nRead);
+        res := Platform.Write(dev.fd, SYSTEM.ADR(buf[0]), nRead);
+        IF res # 0 THEN
+          Out.String("Write to TUN failed."); Out.Ln;
+          keep := FALSE;
+        END;
+      END
+    ELSIF res # 0 THEN
+      Out.String("Socket read error."); Out.Ln;
+      keep := FALSE;
+    END;
+
+    (* tun → socket *)
+    res := Platform.Read(dev.fd, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
+    IF res = 0 THEN
+      IF nRead > 0 THEN
+        vpnXor.EncryptDecrypt(buf, nRead);
+        res := Platform.Write(sock, SYSTEM.ADR(buf[0]), nRead);
+        IF res # 0 THEN
+          Out.String("Write to socket failed."); Out.Ln;
+          keep := FALSE;
+        END;
+      END
+    ELSIF res # 0 THEN
+      Out.String("TUN read error."); Out.Ln;
+      keep := FALSE;
+    END;
+
+    Platform.Delay(10);
   END;
 
-  (* tun → socket *)
-  res := Platform.Read(dev.fd, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
-  IF res = 0 THEN
-    IF nRead > 0 THEN
-      vpnXor.EncryptDecrypt(buf, nRead);
-      res := Platform.Write(sock, SYSTEM.ADR(buf[0]), nRead);
-    END
-  END;
-
-  Platform.Delay(10);  (* shorter delay, for faster response *)
-END;
+  Out.String("VPN session ended."); Out.Ln;
+  Platform.Exit(0);
 
 END vpnServer.
