@@ -3,6 +3,7 @@ IMPORT vpnTun, vpnNB, vpnXor, netSockets, Out, SYSTEM, Platform;
 
 CONST
   BUFSIZE = 2048;
+  EAGAIN  = 11;
 
 TYPE
   PSockAddr = POINTER TO netSockets.SockAddr;
@@ -16,6 +17,7 @@ VAR
   buf: ARRAY BUFSIZE OF CHAR;
   nRead: LONGINT;
   b, keep: BOOLEAN;
+  err: INTEGER;
 BEGIN
   IF ~vpnTun.OpenTun(dev) THEN HALT(1) END;
 
@@ -60,13 +62,19 @@ keep := TRUE;
         vpnXor.EncryptDecrypt(buf, nRead);
         res := Platform.Write(dev.fd, SYSTEM.ADR(buf[0]), nRead);
         IF res # 0 THEN
-          Out.String("Write to TUN failed."); Out.Ln;
-          keep := FALSE;
+            err := Platform.Error();
+            IF err # EAGAIN THEN
+               Out.String("Socket read failed: "); Out.Int(err, 0); Out.Ln;
+               keep := FALSE;
+            END
         END;
       END
     ELSIF res # 0 THEN
-      Out.String("Socket read error."); Out.Ln;
-      keep := FALSE;
+            err := Platform.Error();
+            IF err # EAGAIN THEN
+               Out.String("Socket read failed: "); Out.Int(err, 0); Out.Ln;
+               keep := FALSE;
+            END
     END;
 
     (* tun → socket *)
@@ -76,13 +84,19 @@ keep := TRUE;
         vpnXor.EncryptDecrypt(buf, nRead);
         res := Platform.Write(sock, SYSTEM.ADR(buf[0]), nRead);
         IF res # 0 THEN
-          Out.String("Write to socket failed."); Out.Ln;
-          keep := FALSE;
+            err := Platform.Error();
+            IF err # EAGAIN THEN
+               Out.String("Socket read failed: "); Out.Int(err, 0); Out.Ln;
+               keep := FALSE;
+            END
         END;
       END
     ELSIF res # 0 THEN
-      Out.String("TUN read error."); Out.Ln;
-      keep := FALSE;
+            err := Platform.Error();
+            IF err # EAGAIN THEN
+               Out.String("Socket read failed: "); Out.Int(err, 0); Out.Ln;
+               keep := FALSE;
+            END
     END;
 
     Platform.Delay(10);
