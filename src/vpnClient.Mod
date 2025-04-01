@@ -25,59 +25,55 @@ BEGIN
   b := vpnNB.SetNonBlockingFd(dev.fd);     (* TUN fd *)
   b := vpnNB.SetNonBlockingFd(sock);       (* connected TCP socket *)
 
-keep := TRUE;
+LOOP
+  IF ~keep THEN EXIT END;
 
-  LOOP
-    IF ~keep THEN EXIT END;
+  (* socket → tun *)
+  res := Platform.Read(sock, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
+  IF res = 0 THEN
+    IF nRead > 0 THEN
+      vpnXor.EncryptDecrypt(buf, nRead);
+      res := Platform.Write(dev.fd, SYSTEM.ADR(buf[0]), nRead);
+      IF res # 0 THEN
+        err := Platform.Error();
+        IF err # EAGAIN THEN
+          Out.String("Write to TUN failed: "); Out.Int(err, 0); Out.Ln;
+          keep := FALSE;
+        END
+      END;
+    END
+  ELSIF res # 0 THEN
+    err := Platform.Error();
+    IF err # EAGAIN THEN
+      Out.String("Read from socket failed: "); Out.Int(err, 0); Out.Ln;
+      keep := FALSE;
+    END
+  END;
 
-    (* socket → tun *)
-    res := Platform.Read(sock, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
-    IF res = 0 THEN
-      IF nRead > 0 THEN
-        vpnXor.EncryptDecrypt(buf, nRead);
-        res := Platform.Write(dev.fd, SYSTEM.ADR(buf[0]), nRead);
-        IF res # 0 THEN
-            err := Platform.Error();
-            IF err # EAGAIN THEN
-               Out.String("Socket read failed: "); Out.Int(err, 0); Out.Ln;
-               keep := FALSE;
-            END
-        END;
-      END
-    ELSIF res # 0 THEN
-            err := Platform.Error();
-            IF err # EAGAIN THEN
-               Out.String("Socket read failed: "); Out.Int(err, 0); Out.Ln;
-               keep := FALSE;
-            END
-      END
-    END;
+  (* tun → socket *)
+  res := Platform.Read(dev.fd, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
+  IF res = 0 THEN
+    IF nRead > 0 THEN
+      vpnXor.EncryptDecrypt(buf, nRead);
+      res := Platform.Write(sock, SYSTEM.ADR(buf[0]), nRead);
+      IF res # 0 THEN
+        err := Platform.Error();
+        IF err # EAGAIN THEN
+          Out.String("Write to socket failed: "); Out.Int(err, 0); Out.Ln;
+          keep := FALSE;
+        END
+      END;
+    END
+  ELSIF res # 0 THEN
+    err := Platform.Error();
+    IF err # EAGAIN THEN
+      Out.String("Read from TUN failed: "); Out.Int(err, 0); Out.Ln;
+      keep := FALSE;
+    END
+  END;
 
-    (* tun → socket *)
-    res := Platform.Read(dev.fd, SYSTEM.ADR(buf[0]), BUFSIZE, nRead);
-    IF res = 0 THEN
-      IF nRead > 0 THEN
-        vpnXor.EncryptDecrypt(buf, nRead);
-        res := Platform.Write(sock, SYSTEM.ADR(buf[0]), nRead);
-        IF res # 0 THEN
-            err := Platform.Error();
-            IF err # EAGAIN THEN
-               Out.String("Socket read failed: "); Out.Int(err, 0); Out.Ln;
-               keep := FALSE;
-            END
-        END;
-      END
-    ELSIF res # 0 THEN
-      IF Platform.Error() # 11 THEN
-            err := Platform.Error();
-            IF err # EAGAIN THEN
-               Out.String("Socket read failed: "); Out.Int(err, 0); Out.Ln;
-               keep := FALSE;
-            END
-      END
-    END;
-
-    Platform.Delay(10);
+  Platform.Delay(10);
+END;
 
   Out.String("VPN session ended."); Out.Ln;
   Platform.Exit(0);
