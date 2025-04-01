@@ -25,6 +25,8 @@ BEGIN
   b := vpnNB.SetNonBlockingFd(dev.fd);     (* TUN fd *)
   b := vpnNB.SetNonBlockingFd(sock);       (* connected TCP socket *)
 
+keep := TRUE;
+
 LOOP
   IF ~keep THEN EXIT END;
 
